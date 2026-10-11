@@ -17,9 +17,12 @@
     <h1>{{ run['account_name'] }}</h1>
     <p class="muted">{{ run['bank_name'] }} ····{{ run['last_digits'] }} · period ending {{ run['period_end'] }}
       · prepared by {{ run['preparer_name'] }}
-      {% if run['approver_name'] %} · approved by {{ run['approver_name'] }}{% endif %}</p>
+      {% if run['approver_name'] %} · approved by {{ run['approver_name'] }} on {{ run['approved_at'] | local_time }}{% endif %}</p>
   </div>
-  <span class="badge big status-{{ run['status'] }}">{{ run['status'] | capitalize }}</span>
+  <div class="head-actions">
+    <a class="btn" href="{{ url_for('export_xlsx', run_id=run['id']) }}">Download Excel</a>
+    <span class="badge big status-{{ run['status'] }}">{{ run['status'] | capitalize }}</span>
+  </div>
 </div>
 
 {% if run['status'] == 'rejected' %}
@@ -203,7 +206,7 @@
   <h2>Audit trail</h2>
   <ul class="audit">
   {% for a in audit %}
-    <li><span class="mono muted">{{ a['at'][:16].replace('T', ' ') }}</span>
+    <li><span class="mono muted">{{ a['at'] | local_time }}</span>
       <strong>{{ a['user_name'] }}</strong> {{ a['action'].replace('_', ' ') }}{% if a['detail'] %}: {{ a['detail'] }}{% endif %}</li>
   {% endfor %}
   </ul>

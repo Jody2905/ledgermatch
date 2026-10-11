@@ -290,3 +290,17 @@ def test_reasons_are_escaped_not_run_as_html(app, preparer, run_id):
     html = preparer.get(f"/runs/{run_id}").get_data(as_text=True)
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+
+
+def test_download_excel_is_logged(app, preparer, run_id):
+    r = preparer.get(f"/runs/{run_id}/export.xlsx")
+    assert r.status_code == 200
+    assert r.data[:2] == b"PK"                                     # .xlsx files are zip archives
+    assert "reconciliation-4821-2026-10-31.xlsx" in r.headers["Content-Disposition"]
+    audit = preparer.get(f"/runs/{run_id}").get_data(as_text=True).split("Audit trail", 1)[1]
+    assert "exported" in audit
+
+
+def test_download_needs_login_and_a_real_run(app, preparer):
+    assert app.test_client().get("/runs/1/export.xlsx").status_code == 302
+    assert preparer.get("/runs/999/export.xlsx").status_code == 404

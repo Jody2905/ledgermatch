@@ -269,6 +269,13 @@ class ReconciliationService:
     # Reading
     # ==================================================================
 
+    def record_export(self, run_id, user_id):
+        """Downloads are logged too: who took a copy of the figures, and when."""
+        self._user(user_id)
+        self.run(run_id)
+        with self.db:
+            self._audit(run_id, user_id, "exported", "downloaded the Excel copy")
+
     def run(self, run_id):
         row = self.db.execute(
             """SELECT r.*, a.name AS account_name, a.bank_name, a.last_digits,

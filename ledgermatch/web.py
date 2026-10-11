@@ -12,11 +12,13 @@ import secrets
 from datetime import date
 from functools import wraps
 
-from flask import (Flask, abort, flash, g, redirect, render_template, request, session, url_for)
+from flask import (Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for)
 
 from .db import connect
+from .export import file_name, workbook_bytes
 from .money import fmt, parse_amount
 from .service import ImportProblem, NotAllowed, NotFound, ReconciliationService
+from .timefmt import local_time
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
@@ -34,6 +36,7 @@ def create_app(db_path, secret_key=None):
         DB_PATH=str(db_path),
     )
     app.jinja_env.filters["money"] = fmt
+    app.jinja_env.filters["local_time"] = local_time
     app.jinja_env.globals["csrf_token"] = _csrf_token
 
     # ---- Per-request database connection and service ----
@@ -159,6 +162,19 @@ def create_app(db_path, secret_key=None):
             can_submit=editable,
             can_review=(run["status"] == "submitted" and user["role"] == "approver"
                         and run["prepared_by"] != user["id"]))
+
+    @app.get("/runs/<int:run_id>/export.xlsx")
+    @login_required
+    def export_xlsx(run_id):
+        svc = service()
+        try:
+            run = svc.run(run_id)
+        except NotFound:
+            abort(404)
+        data = workbook_bytes(svc, run_id)
+        svc.record_export(run_id, g.user["id"])
+        return send_file(io.BytesIO(data), as_attachment=True, download_name=file_name(run),
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     # ---- Actions: each one calls the service and reports the outcome ----
 
