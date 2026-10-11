@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}{{ run['account_name'] }} · {{ run['period_end'] }}{% endblock %}
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+{% macro item_row(x, side, flagged) %}
+  <tr class="{{ 'row-flag' if flagged }}">
+    {% if editable %}<td><input type="checkbox" name="{{ side }}" value="{{ x.line_no }}" aria-label="select"></td>{% endif %}
+    <td class="mono">{{ x.date.strftime('%d %b') }}</td>
+    <td>{{ x.payee if side == 'ledger' else x.description }}{% if x.reference %} <span class="muted">· {{ x.reference }}</span>{% endif %}</td>
+    <td class="num">{{ x.amount | money }}</td>
+  </tr>
+{% endmacro %}
+{% block content %}
+
+<a class="back" href="{{ url_for('index') }}">← All reconciliations</a>
+<div class="page-head">
+  <div>
+    <h1>{{ run['account_name'] }}</h1>
+    <p class="muted">{{ run['bank_name'] }} ····{{ run['last_digits'] }} · period ending {{ run['period_end'] }}
+      · prepared by {{ run['preparer_name'] }}
+      {% if run['approver_name'] %} · approved by {{ run['approver_name'] }}{% endif %}</p>
+  </div>
+  <span class="badge big status-{{ run['status'] }}">{{ run['status'] | capitalize }}</span>
+</div>
+
+{% if run['status'] == 'rejected' %}
+  <div class="flash flash-error"><strong>Sent back by the approver:</strong> {{ run['rejection_reason'] }}</div>
+{% endif %}
+
+<!-- ===== Workflow ===== -->
+{% if can_submit or can_review %}
+<div class="card workflow">
+  {% if can_submit %}
+    {% if s.ready_to_sign_off %}
+      <p><strong>Ready to submit.</strong> It balances and nothing is left to investigate.</p>
+    {% elif s.balances %}
+      <p>It balances, but <strong>{{ s.issues|length }} issue(s)</strong> must be resolved before you can submit.</p>
+    {% else %}
+      <p>It doesn't balance yet: difference <strong>{{ s.difference | money }}</strong>.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('submit', run_id=run['id']) }}">{{ csrf() }}
+      <button class="btn-primary" {% if not s.ready_to_sign_off %}disabled{% endif %}>Submit for approval</button>
+    </form>
+  {% endif %}
+  {% if can_review %}
+    <p><strong>Waiting for your review.</strong> Check the statement, corrections and audit trail below.</p>
+    <div class="row">
+      <form method="post" action="{{ url_for('approve', run_id=run['id']) }}">{{ csrf() }}
+        <button class="btn-primary">Approve</button>
+      </form>
+      <form method="post" action="{{ url_for('reject', run_id=run['id']) }}" class="row grow">{{ csrf() }}
+        <input name="reason" placeholder="Reason for sending it back" required minlength="5">
+        <button class="btn-danger">Reject</button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ===== The statement ===== -->
+<section class="card">
+  <h2>Bank reconciliation statement as at {{ s.period_end.strftime('%d %B %Y') }}</h2>
+  <div class="statement">
+    <div>
+      <table class="stmt">
+        <tr><td>Balance per bank statement</td><td class="num">{{ s.bank_balance | money }}</td></tr>
+        <tr><td>Add: deposits in transit ({{ s.deposits_in_transit|length }})</td>
+            <td class="num">{{ s.deposits_in_transit|sum(attribute='amount') | money }}</td></tr>
+        <tr><td>Less: outstanding payments ({{ s.outstanding_payments|length }})</td>
+            <td class="num">{{ s.outstanding_payments|sum(attribute='amount') | money }}</td></tr>
+        {% if s.investigate_ledger %}<tr class="row-flag"><td>Under investigation (books)</td>
+            <td class="num">{{ s.investigate_ledger|sum(attribute='amount') | money }}</td></tr>{% endif %}
+        {% for label, amount in s.bank_corrections %}<tr><td>{{ label }}</td><td class="num">{{ amount | money }}</td></tr>{% endfor %}
+        <tr class="total"><td>Adjusted bank balance</td><td class="num">{{ s.adjusted_bank | money }}</td></tr>
+      </table>
+    </div>
+    <div>
+      <table class="stmt">
+        <tr><td>Balance per books</td><td class="num">{{ s.book_balance | money }}</td></tr>
+        <tr><td>Add: bank credits not yet recorded ({{ s.bank_credits_not_in_books|length }})</td>
+            <td class="num">{{ s.bank_credits_not_in_books|sum(attribute='amount') | money }}</td></tr>
+        <tr><td>Less: bank debits not yet recorded ({{ s.bank_debits_not_in_books|length }})</td>
+            <td class="num">{{ s.bank_debits_not_in_books|sum(attribute='amount') | money }}</td></tr>
+        {% if s.investigate_bank %}<tr class="row-flag"><td>Under investigation (bank)</td>
+            <td class="num">{{ s.investigate_bank|sum(attribute='amount') | money }}</td></tr>{% endif %}
+        {% for label, amount in s.book_corrections %}<tr class="row-fix"><td>{{ label }}</td><td class="num">{{ amount | money }}</td></tr>{% endfor %}
+        <tr class="total"><td>Adjusted book balance</td><td class="num">{{ s.adjusted_book | money }}</td></tr>
+      </table>
+    </div>
+  </div>
+  <p class="difference {{ 'ok' if s.balances else 'bad' }}">Difference: <strong>{{ s.difference | money }}</strong>
+    {% if s.balances %}· balances{% else %}· does not balance: check the closing balances and that both files are complete{% endif %}</p>
+</section>
+
+<!-- ===== Issues ===== -->
+{% if s.issues %}
+<section class="card">
+  <h2>Needs investigation ({{ s.issues|length }})</h2>
+  <p class="hint">Resolve each one by matching the items, marking an item as an error, or dismissing the warning with a reason.</p>
+  {% for i in s.issues %}
+    <div class="issue">
+      <span class="tag">{{ i.kind.replace('_', ' ') }}</span> {{ i.detail }}
+      {% if editable %}
+      <details><summary>Dismiss this warning</summary>
+        <form method="post" action="{{ url_for('dismiss', run_id=run['id'], issue_id=i.id) }}" class="row">{{ csrf() }}
+          <input name="reason" placeholder="Why it's fine (e.g. two genuine identical invoices)" required minlength="5">
+          <button class="btn">Dismiss</button>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- ===== Unmatched items and manual matching ===== -->
+{% set unmatched_bank = s.investigate_bank + s.bank_credits_not_in_books + s.bank_debits_not_in_books %}
+{% set unmatched_ledger = s.investigate_ledger + s.deposits_in_transit + s.outstanding_payments %}
+<section class="card">
+  <h2>Unmatched items</h2>
+  {% if editable %}<p class="hint">To match by hand, tick items on both sides, give a reason, and press Match. Highlighted rows are part of an open issue.</p>{% endif %}
+  <form method="post" action="{{ url_for('manual_match', run_id=run['id']) }}">{{ csrf() }}
+    <div class="statement">
+      <div>
+        <h3>Bank statement ({{ unmatched_bank|length }})</h3>
+        <table class="items">{% for x in unmatched_bank %}{{ item_row(x, 'bank', x in s.investigate_bank) }}{% endfor %}</table>
+      </div>
+      <div>
+        <h3>Books ({{ unmatched_ledger|length }})</h3>
+        <table class="items">{% for x in unmatched_ledger %}{{ item_row(x, 'ledger', x in s.investigate_ledger) }}{% endfor %}</table>
+      </div>
+    </div>
+    {% if editable %}
+    <div class="row">
+      <input name="reason" placeholder="Reason, e.g. 'Books keyed 1,250.00; cheque was 1,520.00 — JV-2612'" required minlength="5">
+      <button class="btn-primary">Match selected</button>
+    </div>
+    {% endif %}
+  </form>
+</section>
+
+{% if editable and (unmatched_bank or unmatched_ledger) %}
+<section class="card">
+  <h2>Mark an item as an error</h2>
+  <p class="hint">For example a voucher keyed twice. It then appears on the statement as a correction to make.</p>
+  <form method="post" action="{{ url_for('mark_error', run_id=run['id']) }}" class="row">{{ csrf() }}
+    <select name="item" required>
+      <option value="">Choose an item…</option>
+      {% for x in unmatched_ledger %}<option value="ledger:{{ x.line_no }}">Books: {{ x.date.strftime('%d %b') }} {{ x.payee }} {{ x.voucher }} {{ x.amount | money }}</option>{% endfor %}
+      {% for x in unmatched_bank %}<option value="bank:{{ x.line_no }}">Bank: {{ x.date.strftime('%d %b') }} {{ x.description }} {{ x.amount | money }}</option>{% endfor %}
+    </select>
+    <input name="reason" placeholder="Reason and journal reference" required minlength="5">
+    <button class="btn">Mark as error</button>
+  </form>
+</section>
+{% endif %}
+
+{% if errors_bank or errors_ledger %}
+<section class="card">
+  <h2>Items marked as errors</h2>
+  <table class="table compact">
+  {% for r in errors_ledger %}
+    <tr><td>Books</td><td>{{ r['payee'] }} {{ r['voucher'] }}</td><td class="num">{{ (r['amount'] / 100) | money }}</td><td class="muted">{{ r['error_reason'] }}</td>
+      <td>{% if editable %}<form method="post" action="{{ url_for('clear_error', run_id=run['id']) }}">{{ csrf() }}
+        <input type="hidden" name="side" value="ledger"><input type="hidden" name="line_no" value="{{ r['line_no'] }}">
+        <button class="btn-quiet">Undo</button></form>{% endif %}</td></tr>
+  {% endfor %}
+  {% for r in errors_bank %}
+    <tr><td>Bank</td><td>{{ r['description'] }}</td><td class="num">{{ (r['amount'] / 100) | money }}</td><td class="muted">{{ r['error_reason'] }}</td>
+      <td>{% if editable %}<form method="post" action="{{ url_for('clear_error', run_id=run['id']) }}">{{ csrf() }}
+        <input type="hidden" name="side" value="bank"><input type="hidden" name="line_no" value="{{ r['line_no'] }}">
+        <button class="btn-quiet">Undo</button></form>{% endif %}</td></tr>
+  {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+<!-- ===== Matches ===== -->
+<section class="card">
+  <details>
+    <summary><strong>Matched items ({{ matches|length }})</strong></summary>
+    <table class="table compact">
+      <thead><tr><th>Rule</th><th>Bank</th><th>Books</th><th>Note</th><th></th></tr></thead>
+      {% for m in matches %}
+      <tr>
+        <td><span class="tag tag-{{ m.match['rule'] }}">{{ m.match['rule'].replace('_', ' + ') }}</span></td>
+        <td>{% for n in m.bank %}{{ bank[n]['description'] }} <span class="num">{{ (bank[n]['amount'] / 100) | money }}</span><br>{% endfor %}</td>
+        <td>{% for n in m.ledger %}{{ ledger[n]['payee'] }} <span class="num">{{ (ledger[n]['amount'] / 100) | money }}</span><br>{% endfor %}</td>
+        <td class="muted">{{ m.match['note'] }}{% if m.match['created_by_name'] %} — {{ m.match['created_by_name'] }}{% endif %}</td>
+        <td>{% if editable %}
+          <details><summary>Unmatch</summary>
+            <form method="post" action="{{ url_for('unmatch', run_id=run['id'], match_id=m.match['id']) }}" class="stack">{{ csrf() }}
+              <input name="reason" placeholder="Why" required minlength="5"><button class="btn">Unmatch</button>
+            </form>
+          </details>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </details>
+</section>
+
+<!-- ===== Audit trail ===== -->
+<section class="card">
+  <h2>Audit trail</h2>
+  <ul class="audit">
+  {% for a in audit %}
+    <li><span class="mono muted">{{ a['at'][:16].replace('T', ' ') }}</span>
+      <strong>{{ a['user_name'] }}</strong> {{ a['action'].replace('_', ' ') }}{% if a['detail'] %}: {{ a['detail'] }}{% endif %}</li>
+  {% endfor %}
+  </ul>
+</section>
+{% endblock %}

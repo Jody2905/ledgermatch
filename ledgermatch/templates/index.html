@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Reconciliations{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Reconciliations</h1>
+  <a class="btn btn-primary" href="{{ url_for('new_run') }}">+ New reconciliation</a>
+</div>
+
+{% if not runs %}
+  <div class="card empty">
+    <p>No reconciliations yet.</p>
+    <p><a href="{{ url_for('new_run') }}">Upload a bank statement and cash book to start one.</a></p>
+  </div>
+{% else %}
+<table class="table">
+  <thead><tr><th>Period end</th><th>Account</th><th>Prepared by</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for r in runs %}
+    <tr>
+      <td class="mono">{{ r['period_end'] }}</td>
+      <td>{{ r['account_name'] }}</td>
+      <td>{{ r['preparer_name'] }}</td>
+      <td><span class="badge status-{{ r['status'] }}">{{ r['status'] | capitalize }}</span></td>
+      <td><a href="{{ url_for('show_run', run_id=r['id']) }}">Open →</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

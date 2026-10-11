@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Bank reconciliation</h1>
+  <p class="muted">Log in to prepare or approve reconciliations.</p>
+  <form method="post" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Username <input name="username" autocomplete="username" required autofocus></label>
+    <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="btn-primary">Log in</button>
+  </form>
+</div>
+{% endblock %}

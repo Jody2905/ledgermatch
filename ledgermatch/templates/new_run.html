@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}New reconciliation{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>New reconciliation</h1>
+
+  {% if import_errors %}
+  <div class="flash flash-error">
+    <strong>The files couldn't be imported.</strong> A reconciliation must include every transaction,
+    so nothing was saved. Fix these rows and upload again:
+    <ul>{% for e in import_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Bank account
+      <select name="account_id" required>
+        {% for a in accounts %}
+          <option value="{{ a['id'] }}" {% if form.get('account_id') == a['id']|string %}selected{% endif %}>
+            {{ a['name'] }} · {{ a['bank_name'] }} ····{{ a['last_digits'] }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Period end date
+      <input type="date" name="period_end" value="{{ form.get('period_end', '') }}" required>
+    </label>
+    <div class="two-col">
+      <label>Closing balance per bank statement
+        <input name="bank_balance" inputmode="decimal" value="{{ form.get('bank_balance', '') }}" required>
+      </label>
+      <label>Closing balance per cash book
+        <input name="book_balance" inputmode="decimal" value="{{ form.get('book_balance', '') }}" required>
+      </label>
+    </div>
+    <label>Bank statement (.csv)
+      <input type="file" name="bank_file" accept=".csv" required>
+      <span class="hint">Columns: Date, Description, Reference, Amount</span>
+    </label>
+    <label>Cash book / ledger (.csv)
+      <input type="file" name="ledger_file" accept=".csv" required>
+      <span class="hint">Columns: Date, Voucher, Payee, Reference, Amount</span>
+    </label>
+    <button class="btn-primary">Import and match</button>
+  </form>
+</div>
+{% endblock %}

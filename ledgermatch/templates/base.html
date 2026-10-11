@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}LedgerMatch{% endblock %} · LedgerMatch</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}"><span class="mark">≡</span> LedgerMatch</a>
+    {% if g.user %}
+    <nav class="nav">
+      <a href="{{ url_for('index') }}">Reconciliations</a>
+      <a href="{{ url_for('new_run') }}">New</a>
+      <span class="who">{{ g.user['display_name'] }} <span class="role">{{ g.user['role'] }}</span></span>
+      <form method="post" action="{{ url_for('logout') }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn-quiet">Log out</button>
+      </form>
+    </nav>
+    {% endif %}
+  </header>
+  <main class="wrap">
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+      <div class="flash flash-{{ category }}">{{ message }}</div>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
